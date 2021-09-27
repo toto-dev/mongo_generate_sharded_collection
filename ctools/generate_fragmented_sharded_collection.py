@@ -21,6 +21,8 @@ from tqdm import tqdm
 if (sys.version_info[0] < 3):
     raise Exception("Must be using Python 3")
 
+maxInteger = sys.maxsize
+minInteger = -sys.maxsize - 1
 
 async def main(args):
     cluster = Cluster(args.uri, asyncio.get_event_loop())
@@ -161,23 +163,37 @@ async def main(args):
 
     chunk_objs = list(map(gen_chunk, range(args.num_chunks)))
 
+    async def generate_inserts(chunks_subset):
+        inserts = []
+        size_of_doc = 32 * 1024
+        num_of_docs_per_chunk = 32
+        long_string = 'X' * math.ceil(size_of_doc / 2)
+        
+        for c in chunks_subset:
+            minKey = c['min']['shardKey'] if c['min']['shardKey'] is not bson.min_key.MinKey else minInteger
+            maxKey = c['max']['shardKey'] if c['max']['shardKey'] is not bson.max_key.MaxKey else maxInteger
+            gap = math.ceil((maxKey - minKey) / (num_of_docs_per_chunk + 1));
+            key = minKey;
+            for i in range(num_of_docs_per_chunk):
+                inserts.append(InsertOne({'shardKey': key, long_string: long_string}))
+                key += gap;
+                assert key < maxKey
+            return inserts
+
     async def safe_write_chunks(shard, chunks_subset, progress):
         async with sem:
             config_and_shard_insert = await asyncio.gather(*[
                 asyncio.ensure_future(
                     cluster.configDb.chunks.bulk_write(
                         list(map(lambda x: InsertOne(x), chunks_subset)), ordered=False)),
-                asyncio.ensure_future(shard_connections[shard][ns['db']][ns['coll']].bulk_write(
-                    list(
-                        map(lambda x: InsertOne(dict(x['min'], **{'originalChunk': x})),
-                            chunks_subset)), ordered=False))
+                asyncio.ensure_future(shard_connections[shard][ns['db']][ns['coll']].bulk_write(await generate_inserts(chunks_subset), ordered=False))
             ])
 
             progress.update(config_and_shard_insert[0].inserted_count)
 
     with tqdm(total=args.num_chunks, unit=' chunks') as progress:
         progress.write('Writing chunks entries ...')
-        batch_size = 5000
+        batch_size = 1
         shard_to_chunks = {}
         tasks = []
         for c in chunk_objs:
