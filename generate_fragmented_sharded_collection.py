@@ -110,8 +110,11 @@ async def main(args):
             return i
 
     def gen_chunk(i):
-        sortedShardIdx = math.floor(i / (args.num_chunks / len(shardIds)))
-        shardId = random.choice(
+        if len(shardIds) == 1:
+            shardId = shardIds[0]
+        else:
+            sortedShardIdx = math.floor(i / (args.num_chunks / len(shardIds)))
+            shardId = random.choice(
             shardIds[:sortedShardIdx] + shardIds[sortedShardIdx + 1:]
         ) if random.random() < args.fragmentation else shardIds[sortedShardIdx]
 
