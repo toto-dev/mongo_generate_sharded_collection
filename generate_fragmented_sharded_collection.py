@@ -109,63 +109,63 @@ async def main(args):
         else:
             return i
 
-    def gen_chunk(i):
-        if len(shardIds) == 1:
-            shardId = shardIds[0]
-        else:
-            sortedShardIdx = math.floor(i / (args.num_chunks / len(shardIds)))
-            shardId = random.choice(
-            shardIds[:sortedShardIdx] + shardIds[sortedShardIdx + 1:]
-        ) if random.random() < args.fragmentation else shardIds[sortedShardIdx]
+    def gen_chunks(num_chunks):
 
-        obj = {
-            '_id': make_chunk_id(i),
-            'ns': args.ns,
-            'lastmodEpoch': epoch,
-            'lastmod': bson.timestamp.Timestamp(i + 1, 0),
-            'shard': shardId
-        }
+        for i in range(num_chunks):
+            if len(shardIds) == 1:
+                shardId = shardIds[0]
+            else:
+                sortedShardIdx = math.floor(i / (num_chunks / len(shardIds)))
+                shardId = random.choice(
+                shardIds[:sortedShardIdx] + shardIds[sortedShardIdx + 1:]
+            ) if random.random() < args.fragmentation else shardIds[sortedShardIdx]
 
-        if i == 0:
             obj = {
-                **obj,
-                **{
-                    'min': {
-                        'shardKey': bson.min_key.MinKey
-                    },
-                    'max': {
-                        'shardKey': make_shard_key(i * 10000)
-                    },
-                }
+                '_id': make_chunk_id(i),
+                'ns': args.ns,
+                'lastmodEpoch': epoch,
+                'lastmod': bson.timestamp.Timestamp(i + 1, 0),
+                'shard': shardId
             }
-        elif i == args.num_chunks - 1:
-            obj = {
-                **obj,
-                **{
-                    'min': {
-                        'shardKey': make_shard_key((i - 1) * 10000)
-                    },
-                    'max': {
-                        'shardKey': bson.max_key.MaxKey
-                    },
-                }
-            }
-        else:
-            obj = {
-                **obj,
-                **{
-                    'min': {
-                        'shardKey': make_shard_key((i - 1) * 10000)
-                    },
-                    'max': {
-                        'shardKey': make_shard_key(i * 10000)
+
+            if i == 0:
+                obj = {
+                    **obj,
+                    **{
+                        'min': {
+                            'shardKey': bson.min_key.MinKey
+                        },
+                        'max': {
+                            'shardKey': make_shard_key(i * 10000)
+                        },
                     }
                 }
-            }
+            elif i == num_chunks - 1:
+                obj = {
+                    **obj,
+                    **{
+                        'min': {
+                            'shardKey': make_shard_key((i - 1) * 10000)
+                        },
+                        'max': {
+                            'shardKey': bson.max_key.MaxKey
+                        },
+                    }
+                }
+            else:
+                obj = {
+                    **obj,
+                    **{
+                        'min': {
+                            'shardKey': make_shard_key((i - 1) * 10000)
+                        },
+                        'max': {
+                            'shardKey': make_shard_key(i * 10000)
+                        }
+                    }
+                }
 
-        return obj
-
-    chunk_objs = list(map(gen_chunk, range(args.num_chunks)))
+            yield obj
 
     async def generate_inserts(chunks_subset):
         inserts = []
@@ -200,7 +200,7 @@ async def main(args):
         batch_size = 1
         shard_to_chunks = {}
         tasks = []
-        for c in chunk_objs:
+        for c in gen_chunks(args.num_chunks):
             shard = c['shard']
             if not shard in shard_to_chunks:
                 shard_to_chunks[shard] = [c]
