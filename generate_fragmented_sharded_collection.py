@@ -167,8 +167,7 @@ async def main(args):
 
             yield obj
 
-    async def generate_inserts(chunks_subset):
-        inserts = []
+    def generate_inserts(chunks_subset):
         size_of_doc = 32 * 1024
         num_of_docs_per_chunk = 32
         long_string = 'X' * math.ceil(size_of_doc / 2)
@@ -179,21 +178,17 @@ async def main(args):
             gap = math.ceil((maxKey - minKey) / (num_of_docs_per_chunk + 1));
             key = minKey;
             for i in range(num_of_docs_per_chunk):
-                inserts.append(InsertOne({'shardKey': key, long_string: long_string}))
+                yield {'shardKey': key, long_string: long_string}
                 key += gap;
                 assert key < maxKey
-            return inserts
 
     async def safe_write_chunks(shard, chunks_subset, progress):
         async with sem:
-            config_and_shard_insert = await asyncio.gather(*[
-                asyncio.ensure_future(
-                    cluster.configDb.chunks.bulk_write(
-                        list(map(lambda x: InsertOne(x), chunks_subset)), ordered=False)),
-                asyncio.ensure_future(shard_connections[shard][ns['db']][ns['coll']].bulk_write(await generate_inserts(chunks_subset), ordered=False))
-            ])
+            write_chunks_entries = asyncio.ensure_future(cluster.configDb.chunks.insert_many(chunks_subset, ordered=False))
+            write_data = asyncio.ensure_future(shard_connections[shard][ns['db']][ns['coll']].insert_many(generate_inserts(chunks_subset), ordered=False))
 
-            progress.update(config_and_shard_insert[0].inserted_count)
+            await asyncio.gather(write_chunks_entries, write_data)
+            progress.update(len(chunks_subset))
 
     with tqdm(total=args.num_chunks, unit=' chunks') as progress:
         progress.write('Writing chunks entries ...')
