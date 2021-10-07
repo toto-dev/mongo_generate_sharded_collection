@@ -250,7 +250,7 @@ if __name__ == "__main__":
     argsParser.add_argument(
         'uri', help='URI of the mongos to connect to in the mongodb://[user:password@]host format',
         metavar='uri', type=str)
-    argsParser.add_argument('--ns', help='The namespace to create', metavar='ns', type=str,
+    argsParser.add_argument('--ns', help='The namespace to create', metavar='neamspace', type=str,
                             required=True)
     argsParser.add_argument('--num-chunks', help='The number of chunks to create',
                             metavar='num', type=int, required=True)
