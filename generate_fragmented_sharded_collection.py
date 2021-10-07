@@ -237,10 +237,10 @@ if __name__ == "__main__":
         metavar='uri', type=str)
     argsParser.add_argument('--ns', help='The namespace to create', metavar='ns', type=str,
                             required=True)
-    argsParser.add_argument('--num_chunks', help='The number of chunks to create',
-                            metavar='num_chunks', type=int, required=True)
-    argsParser.add_argument('--shard_key_type', help='The type to use for a shard key',
-                            metavar='shard_key_type', type=str, default='uuid',
+    argsParser.add_argument('--num-chunks', help='The number of chunks to create',
+                            metavar='num', type=int, required=True)
+    argsParser.add_argument('--shard-key-type', help='The type to use for a shard key',
+                            metavar='type', type=str, default='uuid',
                             choices=['integer', 'uuid'])
     argsParser.add_argument(
         '--fragmentation',
