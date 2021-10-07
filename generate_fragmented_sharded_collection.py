@@ -24,6 +24,14 @@ if (sys.version_info[0] < 3):
 maxInteger = sys.maxsize
 minInteger = -sys.maxsize - 1
 
+def fmt_bytes(num):
+    suffix = "B"
+    for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
+        if abs(num) < 1024.0:
+            return f"{num:3.1f}{unit}{suffix}"
+        num /= 1024.0
+    return f"{num:.1f}Yi{suffix}"
+
 async def main(args):
     cluster = Cluster(args.uri, asyncio.get_event_loop())
     await cluster.check_is_mongos(warn_only=False)
@@ -42,6 +50,8 @@ async def main(args):
     print(
         f'Placing {args.num_chunks} chunks over {shardIds} for collection {args.ns} with a shard key of {args.shard_key_type}'
     )
+    
+    print(f'Chunk size: {fmt_bytes(args.chunk_size)}, document size: {fmt_bytes(args.doc_size)}')
 
     uuid_shard_key_byte_order = None
     if args.shard_key_type == 'uuid':
@@ -168,19 +178,20 @@ async def main(args):
             yield obj
 
     def generate_inserts(chunks_subset):
-        size_of_doc = 32 * 1024
-        num_of_docs_per_chunk = 32
-        long_string = 'X' * math.ceil(size_of_doc / 2)
+        chunk_size = args.chunk_size
+        doc_size = args.doc_size
+        num_of_docs_per_chunk = chunk_size // doc_size
+        long_string = 'X' * math.ceil(doc_size / 2)
         
         for c in chunks_subset:
             minKey = c['min']['shardKey'] if c['min']['shardKey'] is not bson.min_key.MinKey else minInteger
             maxKey = c['max']['shardKey'] if c['max']['shardKey'] is not bson.max_key.MaxKey else maxInteger
-            gap = math.ceil((maxKey - minKey) / (num_of_docs_per_chunk + 1));
+            gap = ((maxKey - minKey) // (num_of_docs_per_chunk + 1));
             key = minKey;
             for i in range(num_of_docs_per_chunk):
                 yield {'shardKey': key, long_string: long_string}
                 key += gap;
-                assert key < maxKey
+                assert key < maxKey, f'key: {key}, maxKey: {maxKey}'
 
     async def safe_write_chunks(shard, chunks_subset, progress):
         async with sem:
@@ -230,6 +241,10 @@ async def main(args):
 
 
 if __name__ == "__main__":
+
+    def kb_to_bytes(kilo):
+        return int(kilo) * 1024
+
     argsParser = argparse.ArgumentParser(
         description='Tool to generated a sharded collection with various degree of fragmentation')
     argsParser.add_argument(
@@ -239,6 +254,12 @@ if __name__ == "__main__":
                             required=True)
     argsParser.add_argument('--num-chunks', help='The number of chunks to create',
                             metavar='num', type=int, required=True)
+    argsParser.add_argument('--chunk-size-kb', help='Final chunk size (in KiB)',
+                            metavar='num', dest='chunk_size',
+                            type=lambda x: kb_to_bytes(x), default=kb_to_bytes(1024))
+    argsParser.add_argument('--doc-size-kb', help='Size of the generated documents (in KiB)',
+                            metavar='num', dest='doc_size',
+                            type=lambda x: kb_to_bytes(x), default=kb_to_bytes(8))
     argsParser.add_argument('--shard-key-type', help='The type to use for a shard key',
                             metavar='type', type=str, default='uuid',
                             choices=['integer', 'uuid'])
