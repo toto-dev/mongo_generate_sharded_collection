@@ -32,6 +32,13 @@ def fmt_bytes(num):
         num /= 1024.0
     return f"{num:.1f}Yi{suffix}"
 
+def chunk_size_desc():
+    if args.chunk_size_min == args.chunk_size_max:
+        return fmt_bytes(args.chunk_size_min)
+    else:
+        return f'[min: {fmt_bytes(args.chunk_size_min)}, max: {fmt_bytes(args.chunk_size_max)}]'
+
+
 async def main(args):
     cluster = Cluster(args.uri, asyncio.get_event_loop())
     await cluster.check_is_mongos(warn_only=False)
@@ -51,7 +58,7 @@ async def main(args):
         f'Placing {args.num_chunks} chunks over {shardIds} for collection {args.ns} with a shard key of {args.shard_key_type}'
     )
     
-    print(f'Chunk size: {fmt_bytes(args.chunk_size)}, document size: {fmt_bytes(args.doc_size)}')
+    print(f'Chunk size: {chunk_size_desc()}, document size: {fmt_bytes(args.doc_size)}')
 
     uuid_shard_key_byte_order = None
     if args.shard_key_type == 'uuid':
@@ -178,7 +185,7 @@ async def main(args):
             yield obj
 
     def generate_inserts(chunks_subset):
-        chunk_size = args.chunk_size
+        chunk_size = random.randint(args.chunk_size_min, args.chunk_size_max)
         doc_size = args.doc_size
         num_of_docs_per_chunk = chunk_size // doc_size
         long_string = 'X' * math.ceil(doc_size / 2)
@@ -256,7 +263,7 @@ if __name__ == "__main__":
                             metavar='num', type=int, required=True)
     argsParser.add_argument('--chunk-size-kb', help='Final chunk size (in KiB)',
                             metavar='num', dest='chunk_size',
-                            type=lambda x: kb_to_bytes(x), default=kb_to_bytes(1024))
+                            type=lambda x: kb_to_bytes(x), nargs='+', default=kb_to_bytes(1024))
     argsParser.add_argument('--doc-size-kb', help='Size of the generated documents (in KiB)',
                             metavar='num', dest='doc_size',
                             type=lambda x: kb_to_bytes(x), default=kb_to_bytes(8))
@@ -270,6 +277,23 @@ if __name__ == "__main__":
            follow the previous one, on the same shard, is actually not on the same shard.""",
         metavar='fragmentation', type=float, default=0.10)
 
+
     args = argsParser.parse_args()
+    
+    if len(args.chunk_size) == 1:
+        args.chunk_size_min = args.chunk_size_max = args.chunk_size[0]
+    elif len(args.chunk_size) == 2:
+        args.chunk_size_min = args.chunk_size[0]
+        args.chunk_size_max = args.chunk_size[1]
+    else:
+        raise Exception(f'Too many chunk sizes values provided, maximum 2 allowed')
+
+    del args.chunk_size
+
+    if args.doc_size > min(args.chunk_size_min, args.chunk_size_max):
+        raise Exception(f'''Specified document size is too big. It needs to be smaller than the chunk size: '''
+        f'''Doc size : {fmt_bytes(args.doc_size)}, Chunk size: {chunk_size_desc()}''')
+
+
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main(args))
