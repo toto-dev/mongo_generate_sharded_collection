@@ -190,8 +190,10 @@ async def main(args):
         doc_size = args.doc_size
 
         if doc_size_deviation > 0.0:
+            assert doc_size_deviation < 1.0, f'doc-size-deviation must be a value in the interval (0, 1)'
             deviation = doc_size * doc_size_deviation
             doc_size = random.randint(doc_size - deviation, doc_size + deviation)
+            assert doc_size > 0, f'doc_size: {doc_size}'
 
         num_of_docs_per_chunk = chunk_size // doc_size
         long_string = 'X' * math.ceil(doc_size / 2)
