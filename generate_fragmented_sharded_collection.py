@@ -58,7 +58,7 @@ async def main(args):
         f'Placing {args.num_chunks} chunks over {shardIds} for collection {args.ns} with a shard key of {args.shard_key_type}'
     )
     
-    print(f'Chunk size: {chunk_size_desc()}, document size: {fmt_bytes(args.doc_size)}')
+    print(f'Chunk size: {chunk_size_desc()}, document size: {fmt_bytes(args.doc_size)}, deviation: {args.doc_size_deviation}')
 
     uuid_shard_key_byte_order = None
     if args.shard_key_type == 'uuid':
@@ -186,7 +186,15 @@ async def main(args):
 
     def generate_inserts(chunks_subset):
         chunk_size = random.randint(args.chunk_size_min, args.chunk_size_max)
+        doc_size_deviation = args.doc_size_deviation
         doc_size = args.doc_size
+
+        if doc_size_deviation > 0.0:
+            assert doc_size_deviation < 1.0, f'doc-size-deviation must be a value in the interval (0, 1)'
+            deviation = doc_size * doc_size_deviation
+            doc_size = random.randint(doc_size - deviation, doc_size + deviation)
+            assert doc_size > 0, f'doc_size: {doc_size}'
+
         num_of_docs_per_chunk = chunk_size // doc_size
         long_string = 'X' * math.ceil(doc_size / 2)
         
@@ -267,6 +275,11 @@ if __name__ == "__main__":
     argsParser.add_argument('--doc-size-kb', help='Size of the generated documents (in KiB)',
                             metavar='num', dest='doc_size',
                             type=lambda x: kb_to_bytes(x), default=kb_to_bytes(8))
+    argsParser.add_argument('--doc-size-deviation', help="""A number between 0 and 1 indicating the maximum deviation
+                            from the specified document size. Generated docs will have random sizes within the interval:
+                            [doc_size - doc_size * doc_size deviation, doc_size + doc_size * doc_size_deviation].""",
+                            metavar='num', dest='doc_size_deviation',
+                            type=float, default=0.0)
     argsParser.add_argument('--shard-key-type', help='The type to use for a shard key',
                             metavar='type', type=str, default='uuid',
                             choices=['integer', 'uuid'])
