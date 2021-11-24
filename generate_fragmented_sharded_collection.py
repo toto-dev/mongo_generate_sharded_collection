@@ -68,8 +68,8 @@ async def main(args):
         print(f'Will use {uuid_shard_key_byte_order} byte order for generating UUIDs')
 
     print(f'Cleaning up old entries for {args.ns} ...')
-    await cluster.configDb.collections.delete_many({'_id': args.ns})
-    await cluster.configDb.chunks.delete_many({'ns': args.ns})
+    dbName, collName = args.ns.split('.', 1)
+    await cluster.client[dbName][collName].drop()
     print(f'Cleaned up old entries for {args.ns}')
 
     sem = asyncio.Semaphore(10)
