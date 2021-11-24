@@ -48,6 +48,8 @@ async def main(args):
 
     ns = {'db': args.ns.split('.', 1)[0], 'coll': args.ns.split('.', 1)[1]}
     epoch = bson.objectid.ObjectId()
+    collection_creation_time = datetime.datetime.now() 
+    collection_timestamp = bson.timestamp.Timestamp(collection_creation_time, 1) 
     collection_uuid = uuid.uuid4()
     shardIds = await cluster.shardIds
 
@@ -139,11 +141,17 @@ async def main(args):
 
             obj = {
                 '_id': make_chunk_id(i),
-                'ns': args.ns,
-                'lastmodEpoch': epoch,
                 'lastmod': bson.timestamp.Timestamp(i + 1, 0),
                 'shard': shardId
             }
+
+            if fcv >= '5.0':
+                obj.update({'uuid': collection_uuid})
+            else:
+                obj.update({
+                    'ns': args.ns,
+                    'lastmodEpoch': epoch,
+                    })
 
             if i == 0:
                 obj = {
@@ -210,7 +218,8 @@ async def main(args):
 
     async def safe_write_chunks(shard, chunks_subset, progress):
         async with sem:
-            write_chunks_entries = asyncio.ensure_future(cluster.configDb.chunks.insert_many(chunks_subset, ordered=False))
+            write_chunks_entries = asyncio.ensure_future(cluster.configDb.chunks.with_options(
+                codec_options=CodecOptions(uuid_representation=UuidRepresentation.STANDARD)).insert_many(chunks_subset, ordered=False))
             write_data = asyncio.ensure_future(shard_connections[shard][ns['db']][ns['coll']].insert_many(generate_inserts(chunks_subset), ordered=False))
 
             await asyncio.gather(write_chunks_entries, write_data)
@@ -241,18 +250,28 @@ async def main(args):
         progress.write('Chunks write completed')
 
     print('Writing collection entry')
-    await cluster.configDb.collections.with_options(
-        codec_options=CodecOptions(uuid_representation=UuidRepresentation.STANDARD)).insert_one({
+    coll_obj = {
             '_id': args.ns,
             'lastmodEpoch': epoch,
-            'lastmod': datetime.datetime.now(),
-            'dropped': False,
+            'lastmod': collection_creation_time,
             'key': {
                 'shardKey': 1
-            },
+                },
             'unique': True,
             'uuid': collection_uuid
-        })
+            }
+
+    if fcv >= '5.0':
+        coll_obj.update({
+            'timestamp': collection_timestamp
+            })
+    else:
+        coll_obj.update({
+            'dropped': False
+            })
+
+    await cluster.configDb.collections.with_options(
+        codec_options=CodecOptions(uuid_representation=UuidRepresentation.STANDARD)).insert_one(coll_obj)
 
 
 if __name__ == "__main__":
