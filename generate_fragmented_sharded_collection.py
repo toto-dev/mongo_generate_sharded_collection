@@ -142,8 +142,12 @@ async def main(args):
             obj = {
                 '_id': make_chunk_id(i),
                 'lastmod': bson.timestamp.Timestamp(i + 1, 0),
-                'shard': shardId
+                'shard': shardId,
+                'history': [{'shard': shardId, 'validAfter': collection_timestamp}]
             }
+
+            if (fcv >= '7.0'):
+                obj.update({'onCurrentShardSince': collection_timestamp})
 
             if fcv >= '5.0':
                 obj.update({'uuid': collection_uuid})
