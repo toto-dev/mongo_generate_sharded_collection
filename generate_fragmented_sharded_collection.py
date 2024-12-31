@@ -231,7 +231,7 @@ async def main(args):
 
     with tqdm(total=args.num_chunks, unit=' chunks') as progress:
         progress.write('Writing chunks entries ...')
-        batch_size = 1
+        batch_size = 1000
         shard_to_chunks = {}
         tasks = []
         for c in gen_chunks(args.num_chunks):
