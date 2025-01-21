@@ -142,8 +142,12 @@ async def main(args):
             obj = {
                 '_id': make_chunk_id(i),
                 'lastmod': bson.timestamp.Timestamp(i + 1, 0),
-                'shard': shardId
+                'shard': shardId,
+                'history': [{'shard': shardId, 'validAfter': collection_timestamp}]
             }
+
+            if (fcv >= '7.0'):
+                obj.update({'onCurrentShardSince': collection_timestamp})
 
             if fcv >= '5.0':
                 obj.update({'uuid': collection_uuid})
@@ -227,7 +231,7 @@ async def main(args):
 
     with tqdm(total=args.num_chunks, unit=' chunks') as progress:
         progress.write('Writing chunks entries ...')
-        batch_size = 1
+        batch_size = 1000
         shard_to_chunks = {}
         tasks = []
         for c in gen_chunks(args.num_chunks):
